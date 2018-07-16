@@ -10,8 +10,30 @@ from flask_cors import CORS
 
 from geonature.utils.env import DB, list_and_import_gn_modules
 
+class ReverseProxied(object):
 
-def get_app(config, _app=None):
+    def __init__(self, app, script_name=None, scheme=None, server=None):
+        self.app = app
+        self.script_name = script_name
+        self.scheme = scheme
+        self.server = server
+
+    def __call__(self, environ, start_response):
+        script_name = environ.get('HTTP_X_SCRIPT_NAME', '') or self.script_name
+        if script_name:
+            environ['SCRIPT_NAME'] = script_name
+            path_info = environ['PATH_INFO']
+            if path_info.startswith(script_name):
+                environ['PATH_INFO'] = path_info[len(script_name):]
+        scheme = environ.get('HTTP_X_SCHEME', '') or self.scheme
+        if scheme:
+            environ['wsgi.url_scheme'] = scheme
+        server = environ.get('HTTP_X_FORWARDED_SERVER', '') or self.server
+        if server:
+            environ['HTTP_HOST'] = server
+        return self.app(environ, start_response)
+
+def get_app(config, _app=None, with_external_mods=True):
     # Make sure app is a singleton
     if _app is not None:
         return _app
@@ -33,12 +55,16 @@ def get_app(config, _app=None):
 
         from pypnnomenclature.routes import routes
         app.register_blueprint(routes, url_prefix='/nomenclatures')
+        from pypnnomenclature.admin import admin
 
         from geonature.core.routes import routes
         app.register_blueprint(routes, url_prefix='')
 
         from geonature.core.users.routes import routes
         app.register_blueprint(routes, url_prefix='/users')
+
+        from geonature.core.gn_synthese.routes import routes
+        app.register_blueprint(routes, url_prefix='/synthese')
 
         from geonature.core.gn_meta.routes import routes
         app.register_blueprint(routes, url_prefix='/meta')
@@ -61,17 +87,19 @@ def get_app(config, _app=None):
         # errors
         from geonature.core.errors import routes
 
-        CORS(app, supports_credentials=True)
+        app.wsgi_app = ReverseProxied(app.wsgi_app, script_name=config['API_ENDPOINT'])
 
-        # Chargement des modules tiers
-        for conf, manifest, module in list_and_import_gn_modules():
-            app.register_blueprint(
-                module.backend.blueprint.blueprint,
-                url_prefix=conf['api_url']
-            )
-            #chargement de la configuration du module dans le blueprint.config
-            module.backend.blueprint.blueprint.config = conf
-            app.config[manifest['module_name']] = conf
+        CORS(app, supports_credentials=True)
+        # Chargement des mosdules tiers
+        if with_external_mods:
+            for conf, manifest, module in list_and_import_gn_modules(app):
+                app.register_blueprint(
+                    module.backend.blueprint.blueprint,
+                    url_prefix=conf['api_url']
+                )
+                #chargement de la configuration du module dans le blueprint.config
+                module.backend.blueprint.blueprint.config = conf
+                app.config[manifest['module_name']] = conf
 
         _app = app
     return app

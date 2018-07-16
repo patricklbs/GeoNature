@@ -12,43 +12,10 @@ SET search_path = gn_meta, pg_catalog;
 
 SET default_with_oids = false;
 
--------------
---FUNCTIONS--
--------------
-CREATE OR REPLACE FUNCTION get_default_parameter(myparamname text, myidorganisme integer DEFAULT 0)
-  RETURNS text AS
-$BODY$
-    DECLARE
-        theparamvalue text; 
--- Function that allows to get value of a parameter depending on his name and organism
--- USAGE : SELECT gn_meta.get_default_parameter('taxref_version');
--- OR      SELECT gn_meta.get_default_parameter('uuid_url_value', 2);
-  BEGIN
-    IF myidorganisme IS NOT NULL THEN
-      SELECT INTO theparamvalue parameter_value FROM gn_meta.t_parameters WHERE parameter_name = myparamname AND id_organism = myidorganisme LIMIT 1;
-    ELSE
-      SELECT INTO theparamvalue parameter_value FROM gn_meta.t_parameters WHERE parameter_name = myparamname LIMIT 1;
-    END IF;
-    RETURN theparamvalue;
-  END;
-$BODY$
-  LANGUAGE plpgsql IMMUTABLE
-  COST 100;
-
 
 ----------
 --TABLES--
 ----------
-CREATE TABLE t_parameters (
-    id_parameter integer NOT NULL,
-    id_organism integer,
-    parameter_name character varying(100) NOT NULL,
-    parameter_desc text,
-    parameter_value text NOT NULL,
-    parameter_extra_value character varying(255)
-);
-COMMENT ON TABLE t_parameters IS 'Allow to manage content configuration depending on organism or not (CRUD depending on privileges).';
-
 
 -- CREATE TABLE sinp_datatype_actors (
 --     id_actor integer NOT NULL,
@@ -75,7 +42,7 @@ CREATE TABLE sinp_datatype_protocols (
     id_protocol integer NOT NULL,
     unique_protocol_id uuid NOT NULL DEFAULT public.uuid_generate_v4(),
     protocol_name character varying(255) NOT NULL,
-    protocol_desc character varying(255),
+    protocol_desc text,
     id_nomenclature_protocol_type integer NOT NULL,
     protocol_url character varying(255)
 );
@@ -121,10 +88,10 @@ CREATE TABLE t_acquisition_frameworks (
     unique_acquisition_framework_id uuid NOT NULL DEFAULT public.uuid_generate_v4(),
     acquisition_framework_name character varying(255) NOT NULL,
     acquisition_framework_desc text NOT NULL,
-    id_nomenclature_territorial_level integer DEFAULT ref_nomenclatures.get_default_nomenclature_value(107),
+    id_nomenclature_territorial_level integer DEFAULT ref_nomenclatures.get_default_nomenclature_value('NIVEAU_TERRITORIAL'),
     territory_desc text,
     keywords text,
-    id_nomenclature_financing_type integer DEFAULT ref_nomenclatures.get_default_nomenclature_value(111),
+    id_nomenclature_financing_type integer DEFAULT ref_nomenclatures.get_default_nomenclature_value('TYPE_FINANCEMENT'),
     target_description text,
     ecologic_or_geologic_target text,
     acquisition_framework_parent_id integer,
@@ -207,19 +174,19 @@ CREATE TABLE t_datasets (
     dataset_name character varying(255) NOT NULL,
     dataset_shortname character varying(255) NOT NULL,
     dataset_desc text NOT NULL,
-    id_nomenclature_data_type integer NOT NULL DEFAULT ref_nomenclatures.get_default_nomenclature_value(103),
+    id_nomenclature_data_type integer NOT NULL DEFAULT ref_nomenclatures.get_default_nomenclature_value('DATA_TYP'),
     keywords text,
     marine_domain boolean NOT NULL,
     terrestrial_domain boolean NOT NULL,
-    id_nomenclature_dataset_objectif integer NOT NULL DEFAULT ref_nomenclatures.get_default_nomenclature_value(114),
+    id_nomenclature_dataset_objectif integer NOT NULL DEFAULT ref_nomenclatures.get_default_nomenclature_value('JDD_OBJECTIFS'),
     bbox_west character varying(10),
     bbox_east character varying(10),
     bbox_south character varying(10),
     bbox_north character varying(10),
-    id_nomenclature_collecting_method integer NOT NULL DEFAULT ref_nomenclatures.get_default_nomenclature_value(115),
-    id_nomenclature_data_origin integer NOT NULL DEFAULT ref_nomenclatures.get_default_nomenclature_value(2),
-    id_nomenclature_source_status integer NOT NULL DEFAULT ref_nomenclatures.get_default_nomenclature_value(19),
-    id_nomenclature_resource_type integer NOT NULL DEFAULT ref_nomenclatures.get_default_nomenclature_value(102),
+    id_nomenclature_collecting_method integer NOT NULL DEFAULT ref_nomenclatures.get_default_nomenclature_value('METHO_RECUEIL'),
+    id_nomenclature_data_origin integer NOT NULL DEFAULT ref_nomenclatures.get_default_nomenclature_value('DS_PUBLIQUE'),
+    id_nomenclature_source_status integer NOT NULL DEFAULT ref_nomenclatures.get_default_nomenclature_value('STATUT_SOURCE'),
+    id_nomenclature_resource_type integer NOT NULL DEFAULT ref_nomenclatures.get_default_nomenclature_value('RESOURCE_TYP'),
     default_validity boolean,
     meta_create_date timestamp without time zone NOT NULL,
     meta_update_date timestamp without time zone
@@ -293,9 +260,6 @@ COMMENT ON TABLE cor_dataset_protocol IS 'A dataset can have 0 or n "protocole".
 ----------------
 --PRIMARY KEYS--
 ----------------
-ALTER TABLE ONLY t_parameters
-    ADD CONSTRAINT pk_t_parameters PRIMARY KEY (id_parameter);
-
 -- ALTER TABLE ONLY sinp_datatype_actors
 --     ADD CONSTRAINT pk_sinp_datatype_actors PRIMARY KEY (id_actor);
 
@@ -325,7 +289,7 @@ ALTER TABLE ONLY t_datasets
     ADD CONSTRAINT pk_t_datasets PRIMARY KEY (id_dataset);
 
 ALTER TABLE ONLY cor_dataset_actor
-    ADD CONSTRAINT pk_cor_dataset_actor PRIMARY KEY (id_cda);    
+    ADD CONSTRAINT pk_cor_dataset_actor PRIMARY KEY (id_cda);
 
 ALTER TABLE ONLY cor_dataset_territory
     ADD CONSTRAINT pk_cor_dataset_territory PRIMARY KEY (id_dataset, id_nomenclature_territory);
@@ -337,9 +301,6 @@ ALTER TABLE ONLY cor_dataset_protocol
 ----------------
 --FOREIGN KEYS--
 ----------------
-ALTER TABLE ONLY t_parameters
-    ADD CONSTRAINT fk_t_parameters_bib_organismes FOREIGN KEY (id_organism) REFERENCES utilisateurs.bib_organismes(id_organisme) ON UPDATE CASCADE ON DELETE NO ACTION;
-
 
 ALTER TABLE ONLY cor_acquisition_framework_voletsinp
     ADD CONSTRAINT fk_cor_acquisition_framework_voletsinp_id_acquisition_framework FOREIGN KEY (id_acquisition_framework) REFERENCES t_acquisition_frameworks(id_acquisition_framework) ON UPDATE CASCADE ON DELETE NO ACTION;
@@ -443,41 +404,41 @@ CREATE TRIGGER tri_meta_dates_change_t_acquisition_frameworks
 --CONSTRAINS--
 --------------
 ALTER TABLE t_datasets
-  ADD CONSTRAINT check_t_datasets_resource_type CHECK (ref_nomenclatures.check_nomenclature_type(id_nomenclature_resource_type,102));
+  ADD CONSTRAINT check_t_datasets_resource_type CHECK (ref_nomenclatures.check_nomenclature_type_by_mnemonique(id_nomenclature_resource_type,'RESOURCE_TYP')) NOT VALID;
 
 ALTER TABLE t_datasets
-  ADD CONSTRAINT check_t_datasets_data_type CHECK (ref_nomenclatures.check_nomenclature_type(id_nomenclature_data_type,103));
+  ADD CONSTRAINT check_t_datasets_data_type CHECK (ref_nomenclatures.check_nomenclature_type_by_mnemonique(id_nomenclature_data_type,'DATA_TYP')) NOT VALID;
 
 ALTER TABLE t_datasets
-  ADD CONSTRAINT check_t_datasets_objectif CHECK (ref_nomenclatures.check_nomenclature_type(id_nomenclature_dataset_objectif,114));
+  ADD CONSTRAINT check_t_datasets_objectif CHECK (ref_nomenclatures.check_nomenclature_type_by_mnemonique(id_nomenclature_dataset_objectif,'JDD_OBJECTIFS')) NOT VALID;
 
 ALTER TABLE t_datasets
-  ADD CONSTRAINT check_t_datasets_collecting_method CHECK (ref_nomenclatures.check_nomenclature_type(id_nomenclature_collecting_method,115));
+  ADD CONSTRAINT check_t_datasets_collecting_method CHECK (ref_nomenclatures.check_nomenclature_type_by_mnemonique(id_nomenclature_collecting_method,'METHO_RECUEIL')) NOT VALID;
 
 ALTER TABLE t_datasets
-  ADD CONSTRAINT check_t_datasets_data_origin CHECK (ref_nomenclatures.check_nomenclature_type(id_nomenclature_data_origin,2));
+  ADD CONSTRAINT check_t_datasets_data_origin CHECK (ref_nomenclatures.check_nomenclature_type_by_mnemonique(id_nomenclature_data_origin,'DS_PUBLIQUE')) NOT VALID;
 
 ALTER TABLE t_datasets
-  ADD CONSTRAINT check_t_datasets_source_status CHECK (ref_nomenclatures.check_nomenclature_type(id_nomenclature_source_status,19));
+  ADD CONSTRAINT check_t_datasets_source_status CHECK (ref_nomenclatures.check_nomenclature_type_by_mnemonique(id_nomenclature_source_status,'STATUT_SOURCE')) NOT VALID;
 
 
 ALTER TABLE t_acquisition_frameworks
-  ADD CONSTRAINT check_t_acquisition_frameworks_territorial_level CHECK (ref_nomenclatures.check_nomenclature_type(id_nomenclature_territorial_level,107));
+  ADD CONSTRAINT check_t_acquisition_frameworks_territorial_level CHECK (ref_nomenclatures.check_nomenclature_type_by_mnemonique(id_nomenclature_territorial_level,'NIVEAU_TERRITORIAL')) NOT VALID;
 
 ALTER TABLE t_acquisition_frameworks
-  ADD CONSTRAINT check_t_acquisition_financing_type CHECK (ref_nomenclatures.check_nomenclature_type(id_nomenclature_financing_type,111));
+  ADD CONSTRAINT check_t_acquisition_financing_type CHECK (ref_nomenclatures.check_nomenclature_type_by_mnemonique(id_nomenclature_financing_type,'TYPE_FINANCEMENT')) NOT VALID;
 
 
 ALTER TABLE cor_acquisition_framework_voletsinp
-  ADD CONSTRAINT check_cor_acquisition_framework_voletsinp CHECK (ref_nomenclatures.check_nomenclature_type(id_nomenclature_voletsinp,113));
+  ADD CONSTRAINT check_cor_acquisition_framework_voletsinp CHECK (ref_nomenclatures.check_nomenclature_type_by_mnemonique(id_nomenclature_voletsinp,'VOLET_SINP')) NOT VALID;
 
 
 ALTER TABLE cor_acquisition_framework_objectif
-  ADD CONSTRAINT check_cor_acquisition_framework_objectif CHECK (ref_nomenclatures.check_nomenclature_type(id_nomenclature_objectif,108));
+  ADD CONSTRAINT check_cor_acquisition_framework_objectif CHECK (ref_nomenclatures.check_nomenclature_type_by_mnemonique(id_nomenclature_objectif,'CA_OBJECTIFS')) NOT VALID;
 
 
 ALTER TABLE cor_acquisition_framework_actor
-  ADD CONSTRAINT check_cor_acquisition_framework_actor CHECK (ref_nomenclatures.check_nomenclature_type(id_nomenclature_actor_role,109));
+  ADD CONSTRAINT check_cor_acquisition_framework_actor CHECK (ref_nomenclatures.check_nomenclature_type_by_mnemonique(id_nomenclature_actor_role,'ROLE_ACTEUR')) NOT VALID;
 
 ALTER TABLE cor_acquisition_framework_actor
   ADD CONSTRAINT check_is_actor_in_cor_acquisition_framework_actor CHECK (id_role IS NOT NULL OR id_organism IS NOT NULL);
@@ -490,17 +451,17 @@ ALTER TABLE cor_acquisition_framework_actor
 
 
 ALTER TABLE sinp_datatype_protocols
-  ADD CONSTRAINT check_sinp_datatype_protocol_type CHECK (ref_nomenclatures.check_nomenclature_type(id_nomenclature_protocol_type,112));
+  ADD CONSTRAINT check_sinp_datatype_protocol_type CHECK (ref_nomenclatures.check_nomenclature_type_by_mnemonique(id_nomenclature_protocol_type,'TYPE_PROTOCOLE')) NOT VALID;
 
 
 ALTER TABLE cor_dataset_actor
-  ADD CONSTRAINT check_cor_dataset_actor CHECK (ref_nomenclatures.check_nomenclature_type(id_nomenclature_actor_role,109));
+  ADD CONSTRAINT check_cor_dataset_actor CHECK (ref_nomenclatures.check_nomenclature_type_by_mnemonique(id_nomenclature_actor_role,'ROLE_ACTEUR')) NOT VALID;
 
 ALTER TABLE cor_dataset_actor
   ADD CONSTRAINT check_is_actor_in_cor_dataset_actor CHECK (id_role IS NOT NULL OR id_organism IS NOT NULL);
 
 ALTER TABLE cor_dataset_territory
-  ADD CONSTRAINT check_cor_dataset_territory CHECK (ref_nomenclatures.check_nomenclature_type(id_nomenclature_territory,110));
+  ADD CONSTRAINT check_cor_dataset_territory CHECK (ref_nomenclatures.check_nomenclature_type_by_mnemonique(id_nomenclature_territory,'TERRITOIRE')) NOT VALID;
 
 ALTER TABLE cor_dataset_actor
   ADD CONSTRAINT check_is_unique_cor_dataset_actor_role UNIQUE(id_dataset, id_role, id_nomenclature_actor_role);
@@ -512,14 +473,14 @@ ALTER TABLE cor_dataset_actor
 --------
 --VIEW--
 --------
-CREATE OR REPLACE VIEW v_acquisition_frameworks_protocols AS 
+CREATE OR REPLACE VIEW v_acquisition_frameworks_protocols AS
 	SELECT d.id_acquisition_framework, cdp.id_protocol
 	FROM gn_meta.t_acquisition_frameworks taf
 	JOIN gn_meta.t_datasets d ON d.id_acquisition_framework = taf.id_acquisition_framework
 	JOIN gn_meta.cor_dataset_protocol cdp ON cdp.id_dataset = d.id_dataset;
 
 
-CREATE OR REPLACE VIEW gn_meta.v_acquisition_frameworks_territories AS 
+CREATE OR REPLACE VIEW v_acquisition_frameworks_territories AS
 	SELECT d.id_acquisition_framework, cdt.id_nomenclature_territory, cdt.territory_desc
 	FROM gn_meta.t_acquisition_frameworks taf
 	JOIN gn_meta.t_datasets d ON d.id_acquisition_framework = taf.id_acquisition_framework
@@ -530,12 +491,6 @@ CREATE OR REPLACE VIEW gn_meta.v_acquisition_frameworks_territories AS
 --SAMPLE DATA--
 ---------------
 
-INSERT INTO t_parameters (id_parameter, id_organism, parameter_name, parameter_desc, parameter_value, parameter_extra_value) VALUES
-(1,0,'taxref_version','Version du référentiel taxonomique','Taxref V9.0',NULL)
-,(2,0,'local_srid','Valeur du SRID local','2154',NULL)
-,(3,0,'annee_ref_commune', 'Année du référentiel géographique des communes utilisé', '2017', NULL)
-;
-
 -- INSERT INTO gn_meta.sinp_datatype_actors (id_actor, actor_organism, actor_fullname, actor_mail) VALUES
 -- (1,'Parc nationaux de France',null,null)
 -- ,(2,'Parc national des Ecrins',null,null)
@@ -544,7 +499,7 @@ INSERT INTO t_parameters (id_parameter, id_organism, parameter_name, parameter_d
 -- ;
 -- SELECT pg_catalog.setval('sinp_datatype_actors_id_actor_seq', 5, false);
 
-INSERT INTO gn_meta.sinp_datatype_protocols (id_protocol, unique_protocol_id, protocol_name, protocol_desc, id_nomenclature_protocol_type, protocol_url) VALUES
-(0, '9ed37cb1-803b-4eec-9ecd-31880475bbe9', 'hors protocole','observation réalisées hors protocole',422,null)
+INSERT INTO sinp_datatype_protocols (id_protocol, unique_protocol_id, protocol_name, protocol_desc, id_nomenclature_protocol_type, protocol_url) VALUES
+(0, '9ed37cb1-803b-4eec-9ecd-31880475bbe9', 'hors protocole','observation réalisées hors protocole',ref_nomenclatures.get_id_nomenclature('TYPE_PROTOCOLE','1'),null)
 ;
 SELECT pg_catalog.setval('sinp_datatype_protocols_id_protocol_seq', 1, false);

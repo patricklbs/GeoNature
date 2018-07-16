@@ -2,6 +2,7 @@ import os
 import datetime
 import json
 import psycopg2
+import logging
 
 from flask import(
     Blueprint,
@@ -18,7 +19,7 @@ from sqlalchemy import exc, or_, func, distinct
 from geojson import FeatureCollection
 
 
-from geonature.utils.env import DB, ROOT_DIR
+from geonature.utils.env import DB, ROOT_DIR, get_module_id
 from geonature.utils import filemanager
 from .models import (
     TRelevesOccurrence,
@@ -28,7 +29,6 @@ from .models import (
     VReleveList,
     corRoleRelevesOccurrence,
     DefaultNomenclaturesValue,
-    ViewExportDLB
 )
 from .repositories import ReleveRepository, get_query_occtax_filters
 from .utils import get_nomenclature_filters
@@ -44,7 +44,7 @@ from geonature.utils.utilssqlalchemy import (
 
 from geonature.utils.errors import GeonatureApiError
 from geonature.core.users.models import TRoles, UserRigth
-from geonature.core.gn_meta.models import TDatasets, CorDatasetsActor
+from geonature.core.gn_meta.models import TDatasets, CorDatasetActor
 from pypnusershub.db.tools import (
     InsufficientRightsError,
     get_or_fetch_user_cruved,
@@ -57,10 +57,16 @@ from shapely.geometry import asShape
 from geoalchemy2.shape import from_shape
 
 blueprint = Blueprint('pr_occtax', __name__)
+log = logging.getLogger(__name__)
 
+
+try:
+    ID_MODULE = get_module_id('occtax')
+except Exception as e:
+    ID_MODULE = 'Error'
 
 @blueprint.route('/releves', methods=['GET'])
-@fnauth.check_auth_cruved('R', True, id_app=current_app.config.get('occtax'))
+@fnauth.check_auth_cruved('R', True, id_app=ID_MODULE)
 @json_resp
 def getReleves(info_role):
     releve_repository = ReleveRepository(TRelevesOccurrence)
@@ -69,7 +75,7 @@ def getReleves(info_role):
 
 
 @blueprint.route('/occurrences', methods=['GET'])
-@fnauth.check_auth_cruved('R', id_app=current_app.config.get('occtax'))
+@fnauth.check_auth_cruved('R', id_app=ID_MODULE)
 @json_resp
 def getOccurrences():
     q = DB.session.query(TOccurrencesOccurrence)
@@ -79,7 +85,7 @@ def getOccurrences():
 
 
 @blueprint.route('/releve/<int:id_releve>', methods=['GET'])
-@fnauth.check_auth_cruved('R', True, id_app=current_app.config.get('occtax'))
+@fnauth.check_auth_cruved('R', True, id_app=ID_MODULE)
 @json_resp
 def getOneReleve(id_releve, info_role):
     releve_repository = ReleveRepository(TRelevesOccurrence)
@@ -87,7 +93,7 @@ def getOneReleve(id_releve, info_role):
     user_cruved = get_or_fetch_user_cruved(
         session=session,
         id_role=info_role.id_role,
-        id_application=blueprint.config['id_application'],
+        id_application=ID_MODULE,
         id_application_parent=current_app.config['ID_APPLICATION_GEONATURE']
     )
     releve_cruved = data.get_releve_cruved(info_role, user_cruved)
@@ -101,7 +107,7 @@ def getOneReleve(id_releve, info_role):
 @fnauth.check_auth_cruved(
     'R',
     True,
-    id_app=current_app.config.get('occtax'),
+    id_app=ID_MODULE,
 )
 @json_resp
 def getViewReleveOccurrence(info_role):
@@ -145,7 +151,7 @@ def getViewReleveOccurrence(info_role):
     user_cruved = get_or_fetch_user_cruved(
         session=session,
         id_role=info_role.id_role,
-        id_application=blueprint.config['id_application'],
+        id_application=ID_MODULE,
         id_application_parent=current_app.config['ID_APPLICATION_GEONATURE']
     )
     featureCollection = []
@@ -169,7 +175,7 @@ def getViewReleveOccurrence(info_role):
 @fnauth.check_auth_cruved(
     'R',
     True,
-    id_app=current_app.config.get('occtax')
+    id_app=ID_MODULE
 )
 @json_resp
 def getViewReleveList(info_role):
@@ -234,7 +240,7 @@ def getViewReleveList(info_role):
     user_cruved = get_or_fetch_user_cruved(
         session=session,
         id_role=info_role.id_role,
-        id_application=blueprint.config['id_application'],
+        id_application=ID_MODULE,
         id_application_parent=current_app.config['ID_APPLICATION_GEONATURE']
     )
     featureCollection = []
@@ -253,7 +259,7 @@ def getViewReleveList(info_role):
 
 
 @blueprint.route('/releve', methods=['POST'])
-@fnauth.check_auth_cruved('C', True, id_app=current_app.config.get('occtax'))
+@fnauth.check_auth_cruved('C', True, id_app=ID_MODULE)
 @json_resp
 def insertOrUpdateOneReleve(info_role):
     releveRepository = ReleveRepository(TRelevesOccurrence)
@@ -315,7 +321,7 @@ def insertOrUpdateOneReleve(info_role):
         user_cruved = get_or_fetch_user_cruved(
             session=session,
             id_role=info_role.id_role,
-            id_application=blueprint.config['id_application'],
+            id_application=ID_MODULE,
             id_application_parent=current_app.config['ID_APPLICATION_GEONATURE']
         )
         update_data_scope = user_cruved['U']
@@ -328,6 +334,14 @@ def insertOrUpdateOneReleve(info_role):
         )
         releve = releveRepository.update(releve, user)
     else:
+        if info_role.tag_object_code in ('0', '1', '2'):
+            # Check if user can add a releve in the current dataset
+            allowed  = releve.user_is_in_dataset_actor(info_role)
+            if not allowed:
+                raise InsufficientRightsError(
+                    'User {} has no right in dataset {}'.format(
+                        info_role.id_role, releve.id_dataset),
+                    403)
         DB.session.add(releve)
 
     DB.session.commit()
@@ -337,7 +351,7 @@ def insertOrUpdateOneReleve(info_role):
 
 
 @blueprint.route('/releve/<int:id_releve>', methods=['DELETE'])
-@fnauth.check_auth_cruved('D', True, id_app=current_app.config.get('occtax'))
+@fnauth.check_auth_cruved('D', True, id_app=ID_MODULE)
 @json_resp
 def deleteOneReleve(id_releve, info_role):
     """Suppression d'une données d'un relevé et des occurences associés
@@ -356,7 +370,7 @@ def deleteOneReleve(id_releve, info_role):
 
 
 @blueprint.route('/releve/occurrence/<int:id_occ>', methods=['DELETE'])
-@fnauth.check_auth_cruved('D', id_app=current_app.config.get('occtax'))
+@fnauth.check_auth_cruved('D', id_app=ID_MODULE)
 @json_resp
 def deleteOneOccurence(id_occ):
     """Suppression d'une données d'occurrence et des dénombrements associés
@@ -390,7 +404,7 @@ def deleteOneOccurence(id_occ):
 
 
 @blueprint.route('/releve/occurrence_counting/<int:id_count>', methods=['DELETE'])
-@fnauth.check_auth_cruved('D', id_app=current_app.config.get('occtax'))
+@fnauth.check_auth_cruved('D', id_app=ID_MODULE)
 @json_resp
 def deleteOneOccurenceCounting(id_count):
     """Suppression d'une données de dénombrement
@@ -440,16 +454,16 @@ def getDefaultNomenclatures():
     types = request.args.getlist('id_type')
 
     q = DB.session.query(
-        distinct(DefaultNomenclaturesValue.id_type),
+        distinct(DefaultNomenclaturesValue.mnemonique_type),
         func.pr_occtax.get_default_nomenclature_value(
-            DefaultNomenclaturesValue.id_type,
+            DefaultNomenclaturesValue.mnemonique_type,
             organism,
             regne,
             group2_inpn
         )
     )
     if len(types) > 0:
-        q = q.filter(DefaultNomenclaturesValue.id_type.in_(tuple(types)))
+        q = q.filter(DefaultNomenclaturesValue.mnemonique_type.in_(tuple(types)))
     try:
         data = q.all()
     except Exception:
@@ -465,25 +479,22 @@ def getDefaultNomenclatures():
 @fnauth.check_auth_cruved(
     'E',
     True,
-    id_app=current_app.config.get('occtax'),
+    id_app=ID_MODULE,
     redirect_on_expiration=current_app.config.get('URL_APPLICATION')
 )
-def export(info_role):
-    from . import models
-    
+def export(info_role):    
     export_view_name = blueprint.config['export_view_name']
     export_geom_column = blueprint.config['export_geom_columns_name']
     export_id_column_name = blueprint.config['export_id_column_name']
     export_columns = blueprint.config['export_columns']
+    export_srid = blueprint.config['export_srid']
     
-    mapped_class = getattr(models, export_view_name)
+    export_view = GenericTable(export_view_name, 'pr_occtax', export_geom_column, export_srid)	
 
-    
 
-    releve_repository = ReleveRepository(mapped_class)
-    q = releve_repository.get_filtered_query(info_role)    
-
-    q = get_query_occtax_filters(request.args, mapped_class, q)
+    releve_repository = ReleveRepository(export_view)
+    q = releve_repository.get_filtered_query(info_role, from_generic_table=True)    
+    q = get_query_occtax_filters(request.args, export_view, q, from_generic_table=True)
 
     data = q.all()
 
@@ -492,19 +503,17 @@ def export(info_role):
     
     export_format = request.args['format'] if 'format' in request.args else 'geojson'
     if export_format == 'csv':
-        columns = export_columns if len(export_columns) > 0 else mapped_class.__table__.columns.keys()
+        columns = export_columns if len(export_columns) > 0 else export_view.__table__.columns.keys()
         return to_csv_resp(
             file_name,
-            [d.as_dict() for d in data],
+            [export_view.as_dict(d) for d in data],
             columns,
             ';'
         )
     elif export_format == 'geojson':
         results = FeatureCollection(
-            [d.as_geofeature(
-                export_geom_column,
-                export_id_column_name,
-                recursif=False,
+            [export_view.as_geofeature(
+                d,
                 columns=export_columns
             ) for d in data]
         )
@@ -516,23 +525,19 @@ def export(info_role):
         )  
     else:
         try:
-            assert hasattr(mapped_class, 'as_shape')
             dir_path = str(ROOT_DIR / 'backend/static/shapefiles')
-            mapped_class.as_shape(
-                geom_col='geom_4326',
+            export_view.as_shape(
                 data=data,
                 dir_path=dir_path,
                 file_name=file_name,
                 columns=export_columns,
-                srid=blueprint.config['export_srid']
             )
+
             return send_from_directory(
                 dir_path,
                 file_name+'.zip',
                 as_attachment=True
             )
-        except AssertionError:
-            message  = 'The mapped class is not shapeserializable'
             
         except GeonatureApiError as e:
             message = str(e)
@@ -548,7 +553,7 @@ def export(info_role):
 @fnauth.check_auth_cruved(
     'E',
     True,
-    id_app=current_app.config.get('occtax'),
+    id_app=ID_MODULE,
     redirect_on_expiration=current_app.config.get('URL_APPLICATION')
 )
 @csv_resp
@@ -631,3 +636,29 @@ def export_sinp(info_role):
         export_columns,	
         ';'	
     )
+
+
+@blueprint.route('/test', methods=['GET'])
+def test():
+    # viewSINP = GenericTable('export_occtax_dlb', 'pr_occtax', 'geom_4326', srid=4326)
+    # q = DB.session.query(viewSINP.tableDef)
+    # data = q.all()
+
+    # viewSINP.as_shape(
+    #     data=data,
+    #     dir_path = str(ROOT_DIR / 'backend/static/shapefiles'),
+    #     file_name='lala',
+    # )
+
+    data = DB.session.query(VReleveList).all()
+
+    VReleveList.as_shape(
+        geom_col='geom_4326',
+        data=data,
+        dir_path = str(ROOT_DIR / 'backend/static/shapefiles'),
+        file_name='lala',
+        srid=blueprint.config['export_srid']
+    )
+
+
+    return 'la'

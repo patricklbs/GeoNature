@@ -5,6 +5,7 @@
 from pypnnomenclature.repository import get_nomenclature_list_formated
 from geonature.utils.utilstoml import load_toml
 
+from geonature.core.gn_commons.repositories import get_table_location_id
 
 def generate_config(file_path):
     '''
@@ -43,16 +44,25 @@ def parse_field(fieldlist):
     for field in fieldlist:
         if 'options' not in field:
             field['options'] = {}
-        if 'thesaurusID' in field:
+        if 'thesaurus_code_type' in field:
             field['options']['choices'] = format_nomenclature_list(
-                {'id_type': field['thesaurusID']}
+                {
+                    'code_type': field['thesaurus_code_type'],
+                    'regne': field.get('regne'),
+                    'group2_inpn': field.get('group2_inpn'),
+                }
             )
         if 'thesaurusHierarchyID' in field:
             field['options']['choices'] = format_nomenclature_list(
                 {
-                    'id_type': field['thesaurusID'],
+                    'code_type': field['thesaurus_code_type'],
                     'hierarchy': field['thesaurusHierarchyID']
                 }
+            )
+        if 'attached_table_location' in field['options']:
+            (schema_name, table_name) = field['options']['attached_table_location'].split('.') # noqa
+            field['options']['id_table_location'] = (
+                get_table_location_id(schema_name, table_name)
             )
         if 'fields' in field:
             field['fields'] = parse_field(field['fields'])

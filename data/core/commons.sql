@@ -13,6 +13,11 @@ SET search_path = gn_commons, pg_catalog;
 SET default_with_oids = false;
 
 
+-------------
+--FUNCTIONS--
+-------------
+
+
 CREATE OR REPLACE FUNCTION check_entity_field_exist(myentity character varying)
   RETURNS boolean AS
 $BODY$
@@ -118,7 +123,7 @@ BEGIN
   VALUES(
     theidtablelocation,
     theuuid,
-    ref_nomenclatures.get_default_nomenclature_value(101), --comme la fonction est générique, cette valeur par défaut doit exister et est la même pour tous les modules
+    ref_nomenclatures.get_default_nomenclature_value('STATUT_VALID'), --comme la fonction est générique, cette valeur par défaut doit exister et est la même pour tous les modules
     null,
     thecomment,
     NOW()
@@ -174,6 +179,41 @@ $BODY$
   LANGUAGE plpgsql VOLATILE
   COST 100;
 
+CREATE OR REPLACE FUNCTION get_default_parameter(myparamname text, myidorganisme integer DEFAULT 0)
+  RETURNS text AS
+$BODY$
+    DECLARE
+        theparamvalue text;
+-- Function that allows to get value of a parameter depending on his name and organism
+-- USAGE : SELECT gn_commons.get_default_parameter('taxref_version');
+-- OR      SELECT gn_commons.get_default_parameter('uuid_url_value', 2);
+  BEGIN
+    IF myidorganisme IS NOT NULL THEN
+      SELECT INTO theparamvalue parameter_value FROM gn_commons.t_parameters WHERE parameter_name = myparamname AND id_organism = myidorganisme LIMIT 1;
+    ELSE
+      SELECT INTO theparamvalue parameter_value FROM gn_commons.t_parameters WHERE parameter_name = myparamname LIMIT 1;
+    END IF;
+    RETURN theparamvalue;
+  END;
+$BODY$
+  LANGUAGE plpgsql IMMUTABLE
+  COST 100;
+
+
+-------------
+--TABLES--
+-------------
+
+CREATE TABLE t_parameters (
+    id_parameter integer NOT NULL,
+    id_organism integer,
+    parameter_name character varying(100) NOT NULL,
+    parameter_desc text,
+    parameter_value text NOT NULL,
+    parameter_extra_value character varying(255)
+);
+COMMENT ON TABLE t_parameters IS 'Allow to manage content configuration depending on organism or not (CRUD depending on privileges).';
+
 
 CREATE TABLE bib_tables_location
 (
@@ -193,6 +233,7 @@ CREATE SEQUENCE bib_tables_location_id_table_location_seq
 ALTER SEQUENCE bib_tables_location_id_table_location_seq OWNED BY bib_tables_location.id_table_location;
 ALTER TABLE ONLY bib_tables_location ALTER COLUMN id_table_location SET DEFAULT nextval('bib_tables_location_id_table_location_seq'::regclass);
 SELECT pg_catalog.setval('bib_tables_location_id_table_location_seq', 1, false);
+
 
 
 CREATE TABLE t_medias
@@ -298,7 +339,8 @@ CREATE TABLE t_modules(
   module_url character(255) NOT NULL,
   module_target character(10),
   module_comment text,
-  active boolean NOT NULL
+  active_frontend boolean NOT NULL,
+  active_backend boolean NOT NULL
 );
 COMMENT ON COLUMN t_modules.id_module IS 'PK mais aussi FK vers la table "utilisateurs.t_applications". ATTENTION de ne pas utiliser l''identifiant d''une application existante dans cette table et qui ne serait pas un module de GeoNature';
 COMMENT ON COLUMN t_modules.module_url IS 'URL absolue vers le chemin de l''application. On peux ainsi référencer des modules externes avec target = "blank".';
@@ -308,6 +350,9 @@ COMMENT ON COLUMN t_modules.module_target IS 'Value = NULL ou "blank". On peux a
 ---------------
 --PRIMARY KEY--
 ---------------
+ALTER TABLE ONLY t_parameters
+    ADD CONSTRAINT pk_t_parameters PRIMARY KEY (id_parameter);
+
 ALTER TABLE ONLY bib_tables_location
     ADD CONSTRAINT pk_bib_tables_location PRIMARY KEY (id_table_location);
 
@@ -327,6 +372,9 @@ ALTER TABLE ONLY t_modules
 ----------------
 --FOREIGN KEYS--
 ----------------
+ALTER TABLE ONLY t_parameters
+    ADD CONSTRAINT fk_t_parameters_bib_organismes FOREIGN KEY (id_organism) REFERENCES utilisateurs.bib_organismes(id_organisme) ON UPDATE CASCADE ON DELETE NO ACTION;
+
 ALTER TABLE ONLY t_medias
     ADD CONSTRAINT fk_t_medias_media_type FOREIGN KEY (id_nomenclature_media_type) REFERENCES ref_nomenclatures.t_nomenclatures(id_nomenclature) ON UPDATE CASCADE;
 
@@ -365,11 +413,11 @@ ALTER TABLE ONLY t_modules
   --ADD CONSTRAINT fk_t_medias_check_entity_value CHECK (check_entity_value_exist(entity_name,entity_value));
 
 ALTER TABLE t_medias
-  ADD CONSTRAINT check_t_medias_media_type CHECK (ref_nomenclatures.check_nomenclature_type(id_nomenclature_media_type,117));
+  ADD CONSTRAINT check_t_medias_media_type CHECK (ref_nomenclatures.check_nomenclature_type_by_mnemonique(id_nomenclature_media_type,'TYPE_MEDIA')) NOT VALID;
 
 
 ALTER TABLE t_validations
-  ADD CONSTRAINT check_t_validations_valid_status CHECK (ref_nomenclatures.check_nomenclature_type(id_nomenclature_valid_status,101));
+  ADD CONSTRAINT check_t_validations_valid_status CHECK (ref_nomenclatures.check_nomenclature_type_by_mnemonique(id_nomenclature_valid_status,'STATUT_VALID')) NOT VALID;
 
 
 ALTER TABLE t_history_actions
@@ -395,6 +443,12 @@ INSERT INTO bib_tables_location (id_table_location, table_desc, schema_name, tab
 SELECT pg_catalog.setval('gn_commons.bib_tables_location_id_table_location_seq', 1, true);
 
 
+
+INSERT INTO t_parameters (id_parameter, id_organism, parameter_name, parameter_desc, parameter_value, parameter_extra_value) VALUES
+(1,0,'taxref_version','Version du référentiel taxonomique','Taxref V9.0',NULL)
+,(2,0,'local_srid','Valeur du SRID local','2154',NULL)
+,(3,0,'annee_ref_commune', 'Année du référentiel géographique des communes utilisé', '2017', NULL)
+;
 
 
 ---------
