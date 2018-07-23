@@ -2,7 +2,7 @@
 CHANGELOG
 =========
 
-2.0.0.beta5 (unreleased)
+2.0.0.beta5 (2018-07-16)
 ------------------------
 
 **Nouveautés**
