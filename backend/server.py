@@ -101,5 +101,8 @@ def get_app(config, _app=None, with_external_mods=True):
                 module.backend.blueprint.blueprint.config = conf
                 app.config[manifest['module_name']] = conf
 
+        from geonature.core.demo_workshop.routes import routes
+        app.register_blueprint(routes, url_prefix='/demo')
+
         _app = app
     return app

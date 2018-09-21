@@ -16,6 +16,9 @@ export class SyntheseComponent implements OnInit {
   public searchBarHidden = false;
   public marginButton: number;
 
+
+  
+
   constructor(
     public searchService: DataService,
     private _mapListService: MapListService,

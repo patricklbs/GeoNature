@@ -1,0 +1,43 @@
+
+<div class="row row-0">
+    <div class="col-sm-12 col-md-7 padding-sm map-content">
+
+        <pnx-map height="90vh">
+          <pnx-geojson [geojson]="myData"> </pnx-geojson>
+        </pnx-map>
+  
+      </div>
+  
+    <div class="col-sm-12 col-md-3 padding-sm">
+        <pnx-taxonomy
+              label="taxon"
+              [parentFormControl]="taxonControl"
+              [idList]="100"
+              [charNumber]="3">
+          </pnx-taxonomy>
+        <pre>
+            Taxon:   {{taxonControl.value |json}}
+        </pre>
+  
+        <pnx-nomenclature 
+            label="Méthode d'observation"
+            [parentFormControl]="nomenclature_method_obs"
+            codeNomenclatureType="METH_OBS">
+        </pnx-nomenclature>
+        <pre>
+          Méthode d'obs: {{nomenclature_method_obs.value}}
+        </pre>
+  
+        <pnx-datasets
+          label="Jeu de données"
+          [parentFormControl]="dataSetControl">
+        </pnx-datasets>
+  
+        <pre>
+            Jeu de données: {{dataSetControl.value}}
+        </pre>
+    </div>
+
+</div>
+
+  
