@@ -118,7 +118,7 @@ BEGIN
 		);
 
 	if niv_precis IS NULL THEN
-		niv_precis = 0;
+		niv_precis := (SELECT ref_nomenclatures.get_id_nomenclature('SENSIBILITE', '0'));
 	END IF;
 
 	return niv_precis;
