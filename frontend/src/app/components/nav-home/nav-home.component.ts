@@ -20,6 +20,9 @@ export class NavHomeComponent implements OnInit, OnDestroy {
   private subscription: Subscription;
   public currentUser: User;
   public appConfig: any;
+  // dict of urls of the different module | dynamicly set via moduleConfigSub observable
+  public urlsDoc = AppConfig.APPS_DOC;
+  public currentDocUrl: string;
   @ViewChild('sidenav') public sidenav: MatSidenav;
 
   constructor(
@@ -44,13 +47,36 @@ export class NavHomeComponent implements OnInit, OnDestroy {
         this.translate.use(locale);
       }
     });
-    this._globalSub.currentModuleSub.subscribe(module => {
-      if (module) {
-        this.moduleName = module.module_label;
-      } else {
-        this.moduleName = 'Accueil';
-      }
+
+    // subscribe to the moduleConfig observable
+    this._globalSub.moduleConfigSub.subscribe(module_doc => {
+      this.urlsDoc[module_doc.module_code.toUpperCase()] = module_doc.url;
+      console.log('OBSERVABLE');
+      console.log(this.urlsDoc);
     });
+
+    this._globalSub.currentModuleSub
+      // debounce time in order to moduleConfigSub observable is set before
+      .debounceTime(1000)
+      .subscribe(module => {
+        console.log('NEXT');
+        if (module) {
+          this.moduleName = module.module_label;
+        } else {
+          this.moduleName = module.module_code;
+        }
+        console.log(module.module_code);
+        console.log(module.module_code in this.urlsDoc);
+        console.log(this.urlsDoc);
+
+        if (module.module_code in this.urlsDoc) {
+          console.log('PASSE LAAA');
+          this.currentDocUrl = this.urlsDoc[module.module_code];
+        } else {
+          this.currentDocUrl = AppConfig.APPS_DOC.GEONATURE;
+        }
+      });
+
     // init the sidenav instance in sidebar service
     this._sideNavService.setSideNav(this.sidenav);
 

@@ -343,7 +343,7 @@ def get_autocomplete_taxons_synthese():
 
 
 @routes.route("/general_stats", methods=["GET"])
-@permissions.check_cruved_scope("R", True)
+@permissions.check_cruved_scope("R", True, module_code="SYNTHESE")
 @json_resp
 def general_stats(info_role):
     """

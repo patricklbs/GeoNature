@@ -15,7 +15,6 @@ import { OcctaxMapInfoComponent } from "./occtax-map-info/occtax-map-info.compon
 import { OcctaxFormService } from "./occtax-map-form/form/occtax-form.service";
 import { OcctaxDataService } from "./services/occtax-data.service";
 
-
 const routes: Routes = [
   { path: "", component: OcctaxMapListComponent },
   { path: "form", component: OcctaxMapFormComponent },

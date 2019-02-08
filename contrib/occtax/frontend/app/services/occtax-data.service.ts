@@ -1,10 +1,17 @@
 import { Injectable } from "@angular/core";
 import { HttpClient } from "@angular/common/http";
 import { AppConfig } from "@geonature_config/app.config";
+import { GlobalSubService } from "@geonature/services/global-sub.service";
+import { ModuleConfig } from "../module.config";
 
 @Injectable()
 export class OcctaxDataService {
-  constructor(private _api: HttpClient) {}
+  constructor(private _api: HttpClient, public globalSub: GlobalSubService) {
+    this.globalSub.moduleConfigSubject.next({
+      module_code: "occtax",
+      url: ModuleConfig.url_doc
+    });
+  }
 
   getOneReleve(id) {
     return this._api.get<any>(`${AppConfig.API_ENDPOINT}/occtax/releve/${id}`);
